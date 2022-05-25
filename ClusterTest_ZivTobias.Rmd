@@ -1,40 +1,46 @@
 ---
-title: "Test"
+title: Are there clusters?
+subtitle: Tobias Edits Version 0.2.0
+author:
+- <h5 style="font-style:italic"> Ziv Ben Zion
+- <h5 style="font-style:italic"> Tobias R. Spiller
 output: html_document
 ---
 
+This uses the methods shown in Dinga et al. (2019) [10.1016/j.nicl.2019.101796. The Original code can be found: https://github.com/dinga92/niclin2019-biotypes/blob/master/analysis_code.Rmd.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r Load Libraries , include=FALSE}
 library(readxl)
-library(PerformanceAnalytics)
-library(Hmisc)
-library(corrplot)
-library(factoextra)
-library(cluster)
-library(factoextra)
+# library(PerformanceAnalytics)
+# library(Hmisc)
+# library(corrplot)
+# library(factoextra)
+# library(cluster)
+# library(factoextra)
 library(NbClust)
-library(dendextend)
-library(ggplot2)
-library(writexl)
-library(readxl)
-library(ggpubr)
-library(reshape2)
-library(plyr)
-library(fpc) 
-library(dendextend)
-library(class)
-library(gmodels)
-library(caret)
-library(lme4)
-library(lmerTest)
-library(sjstats)
-library(tidyverse)
-library(ggpubr)
-library(rstatix)
-library(dplyr)
+library(MASS)
+# library(dendextend)
+# library(ggplot2)
+# library(writexl)
+
+# library(ggpubr)
+# library(reshape2)
+# library(plyr)
+# library(fpc) 
+# library(dendextend)
+# library(class)
+# library(gmodels)
+# library(caret)
+# library(lme4)
+# library(lmerTest)
+# library(sjstats)
+# library(tidyverse)
+# library(ggpubr)
+# library(rstatix)
+# library(dplyr)
 #library(ggradar)
 #library(ggboxplot)
 ```
@@ -65,10 +71,11 @@ mat1p <- mat1$P
 mat2 <- cor(data_cor, use="complete.obs")
 round(mat2, 2)
 ```
+
 Stage #2 - Clustering analysis based on task-based fMRI indices
 ```{r }
 #performing clustering
-hc1 <- agnes(roi_datafz1[2:8], method = "ward")
+hc1 <- agnes(roi_datafz1[2:8], metric = "euclidean", method = "ward")
 row.names(hc1$data)<-c(1:130)
 
 #show the agglomerative coefficient, which measures the amount of clustering structure found (values closer to 1 suggest strong clustering structure).
@@ -81,6 +88,7 @@ pltree(hc1, cex = 0.6, hang = -1, main = "Clustering")
 
 ```
 
+THIS CODE BELOW IS WRONG ZIV!
 ```{r Optimal Number of Clusters Hartigan’s distance index}
 nb1 <- NbClust(roi_datafz1[,2:8], distance = "euclidean", min.nc = 2,max.nc = 6, method = "ward.D2", index="alllong")
 fviz_nbclust(nb1)
@@ -96,9 +104,29 @@ fviz_nbclust(roi_datafz1[,2:8], hcut, method = "silhouette", k.max=6)
 #dev.off()
 ```
 
-```{r Optimal Number of Clusters GAP Statistics}
-gap_stat <- clusGap(roi_datafz1[,2:8], FUN = hcut, K.max = 6, nboot=500)
-fviz_gap_stat(gap_stat)
+
+THIS here is the NEW **CORRECT** CODE
+In her code she mixes different packages and different methods. She estiamted the optimal number of clusters using 4 different methods: 
+1. "aggolmerative" using agnes() from cluster
+2. "Weighted sum of squares" using the fviz_nbclust() from factoextra
+3. "Silhouette" using the fviz_nbclust() from factoextra
+4. "Hartigan" reported in the text, but not shown in the code and the supplement (makes sense as these were final changes because requested by the reviewer)
+
+From her e-mail "
+ou also want to assess different aspects of clustering to decide best method – 1) minimizing within-group distance, 2) maximizing distance between groups, and 3) maximizing reliability. The Silhouette metric is more about between-group differences –compares each point to points in neighboring clusters (2), and the bootstrapping addressed reliability (3). HD quantified the similarity of points within a cluster – compares each point to points within it’s own cluster, so provided complementary information."
+
+I went through the literature (but only briefly) and I haven't found evidence for her claim regarding HD and Silhouette. However, it does not matter, we just do what she did.
+
+Thus, we use HD and Silhouette. First, we estimate the number of clusters, than we visualize the results
+```{r Optimal Number of Clusters}
+#Optimal number of clusters
+#Hartigan
+nb1 <- NbClust(roi_datafz1[,2:8], distance = "euclidean", min.nc = 2, max.nc = 6, method = "ward.D2", index="hartigan") # Estimate
+fviz_nbclust(nb1) # Visualize
+
+# Silhouette
+nb2 <- NbClust(roi_datafz1[,2:8], distance = "euclidean", min.nc = 2, max.nc = 6, method = "ward.D2", index="silhouette") # Estimate
+fviz_nbclust(nb2) # Visualize
 ```
 
 Stage #3 - Examining the statistical significance of the clusters
@@ -112,11 +140,11 @@ test_data <- roi_datafz1[,2:8]
 #Make a new function that performs a hierarchical clustering and return the highest clustering indexes
 #My changes - Hartigan instead of CH, ward.D2 instead of ward.D, min 2 instead of 3, max 6 instead of 5
 cluster_test <- function(test_data){
-  hcfit <- NbClust(test_data, method="ward.D2", index="hartigan", min.nc=2, max.nc = 6)
-  Hartigan_index <- max(hcfit$All.index)
-  hcfit <- NbClust(test_data, method="ward.D", index="silhouette", min.nc=2, max.nc = 6)
-  Silhouette_index <- max(hcfit$All.index) 
-  return(c("Hartigan"=Hartigan_index , "Silhouette"= Silhouette_index))
+  hcfit_hart <- NbClust(test_data, method="ward.D2", index="hartigan", min.nc=2, max.nc = 6)
+  Hartigan_index <- max(hcfit_hart$All.index)
+  hcfit_Sil <- NbClust(test_data, method="ward.D", index="silhouette", min.nc=2, max.nc = 6)
+  Silhouette_index <- max(hcfit_Sil$All.index) 
+  return(c("Hartigan"= Hartigan_index , "Silhouette"= Silhouette_index))
 }
 
 #Optimal Number of Clusters Hartigan’s distance index (from my original script)
@@ -126,12 +154,11 @@ cluster_test <- function(test_data){
 #nb1$All.index[3,13]#Silhouette for 2 clusters
 ```
 
-3b. Fit a multivariate normal distribution to the same data used to perform hierarchical clustering
+3b. Simulate multivariate normally distributed data from the covariance matrix extracted from the original data used to perform hierarchical clustering
 ```{r}
-library(MASS)
 sigma <- cov(test_data)
 mu <- colMeans(test_data)
-real_CI <- cluster_test(test_data)#Hartigan and Silhouette max values for the real clusters
+real_CI <- cluster_test(test_data) #Hartigan and Silhouette max values for the real clusters
 ```
 
 3c. Repeatedly perform hierarchical clustering on samples from this distribution, thus creating an empirical null distribution of clustering indeces
@@ -140,7 +167,7 @@ real_CI <- cluster_test(test_data)#Hartigan and Silhouette max values for the re
 null_Cluster <- list()
 n_sims <- 1999 #number of simulations
 for (i in 1:n_sims){
-  rand_sample <- mvrnorm(n=nrow(test_data), mu=mu, Sigma=sigma)#multivariate normally distributed data
+  rand_sample <- mvrnorm(n=nrow(test_data), mu=mu, Sigma=sigma) #multivariate normally distributed data
   null_Cluster[[i]] <- cluster_test(rand_sample)
 }
 null_Cluster <- as.data.frame(do.call(rbind, null_Cluster))#transform results to data frame
@@ -163,7 +190,7 @@ t(t((c("p.val variance ratio"=pval_cv1, "p.val Silhouette"=pval_cv2))))#transpos
 
 ```{r}
 par(mfrow=c(1,2))
-hist(null_Cluster[,1], breaks = 30, main = "variance ratio criterion null")
+hist(null_Cluster[,1], breaks = 30, main = "Hartigan distance null")
 abline(v=real_CI[1], col="red")
 text(real_CI[1] + 10, 70, paste('p = ', round(pval_cv1, 2)))
 hist(null_Cluster[,2], breaks = 30, main = "Silhouette null")
