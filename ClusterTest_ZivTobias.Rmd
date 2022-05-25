@@ -1,0 +1,174 @@
+---
+title: "Test"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Load Libraries , include=FALSE}
+library(readxl)
+library(PerformanceAnalytics)
+library(Hmisc)
+library(corrplot)
+library(factoextra)
+library(cluster)
+library(factoextra)
+library(NbClust)
+library(dendextend)
+library(ggplot2)
+library(writexl)
+library(readxl)
+library(ggpubr)
+library(reshape2)
+library(plyr)
+library(fpc) 
+library(dendextend)
+library(class)
+library(gmodels)
+library(caret)
+library(lme4)
+library(lmerTest)
+library(sjstats)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(dplyr)
+#library(ggradar)
+#library(ggboxplot)
+```
+
+```{r Import Neural Data, include=FALSE}
+roi_data <- read_excel("roi_data_ziv.xlsx")#158 subjects at TP1 with at least one task
+roi_data <- na.omit(roi_data) #remove 28 cases with any missing data (n=3 without Hariri & n=25 without Domino) 
+roi_data_raw <- roi_data 
+```
+
+```{r Outliers Correction}
+chart.Correlation(roi_data_raw[,2:8], histogram=TRUE, pch=19)
+roi_datafz1<- roi_data_raw
+roi_datafz1[,c(2:8)] <- scale(roi_datafz1[,c(2:8)]) #scale to z-distribution
+roi_datafz1[,2:8][roi_datafz1[2:8]>=3] <- 3 #replace outliers by capping to +3
+roi_datafz1[,2:8][roi_datafz1[2:8]<=-3] <- -3 #replace outliers by capping -3
+```
+
+Stage #1 - Covariance among the fMRI tasks and ROIs
+```{r Correlation Matrices}
+data_cor <- roi_datafz1[,2:8]
+colnames(data_cor) <- c("T_Insula", "T_dACC", "T_Amy", "T_sgACC",
+                                                  "R_Amy", "R_NAcc", "R_OFC")
+
+mat1 <- rcorr(as.matrix(data_cor))
+mat1
+mat1p <- mat1$P
+mat2 <- cor(data_cor, use="complete.obs")
+round(mat2, 2)
+```
+Stage #2 - Clustering analysis based on task-based fMRI indices
+```{r }
+#performing clustering
+hc1 <- agnes(roi_datafz1[2:8], method = "ward")
+row.names(hc1$data)<-c(1:130)
+
+#show the agglomerative coefficient, which measures the amount of clustering structure found (values closer to 1 suggest strong clustering structure).
+hc1$ac 
+
+#plot tree of hierarchical clustering
+#pdf(file = "C:/Users/zhb4/Box Sync/Brain based Biotypes (Jennifer Stevens)/Clustering_Tree.pdf", width = 4, height = 4) 
+pltree(hc1, cex = 0.6, hang = -1, main = "Clustering")
+#dev.off()
+
+```
+
+```{r Optimal Number of Clusters Hartigan’s distance index}
+nb1 <- NbClust(roi_datafz1[,2:8], distance = "euclidean", min.nc = 2,max.nc = 6, method = "ward.D2", index="alllong")
+fviz_nbclust(nb1)
+
+#pdf(file = "C:/Users/zhb4/Box Sync/14. Brain based Biotypes (Jennifer Stevens)/Output/Supplementary_Figure_1a.pdf", width = 4, height = 4) 
+fviz_nbclust(roi_datafz1[,2:8], hcut, method = "wss", k.max=6) + geom_vline(xintercept = 4, linetype = 2, color="steelblue")
+#dev.off()
+```
+
+```{r Optimal Number of Clusters Silhouette}
+#pdf(file = "C:/Users/zhb4/Box Sync/14. Brain based Biotypes (Jennifer Stevens)/Output/Supplementary_Figure_1b.pdf", width = 4, height = 4) 
+fviz_nbclust(roi_datafz1[,2:8], hcut, method = "silhouette", k.max=6)
+#dev.off()
+```
+
+```{r Optimal Number of Clusters GAP Statistics}
+gap_stat <- clusGap(roi_datafz1[,2:8], FUN = hcut, K.max = 6, nboot=500)
+fviz_gap_stat(gap_stat)
+```
+
+Stage #3 - Examining the statistical significance of the clusters
+
+
+3a. Make a function that performs a hierarchical clustering and return the highest clustering indexes
+```{r, message=F}
+#create a new dataset excluding the subject numbers (column #1) 
+test_data <- roi_datafz1[,2:8]
+
+#Make a new function that performs a hierarchical clustering and return the highest clustering indexes
+#My changes - Hartigan instead of CH, ward.D2 instead of ward.D, min 2 instead of 3, max 6 instead of 5
+cluster_test <- function(test_data){
+  hcfit <- NbClust(test_data, method="ward.D2", index="hartigan", min.nc=2, max.nc = 6)
+  Hartigan_index <- max(hcfit$All.index)
+  hcfit <- NbClust(test_data, method="ward.D", index="silhouette", min.nc=2, max.nc = 6)
+  Silhouette_index <- max(hcfit$All.index) 
+  return(c("Hartigan"=Hartigan_index , "Silhouette"= Silhouette_index))
+}
+
+#Optimal Number of Clusters Hartigan’s distance index (from my original script)
+#nb1 <- NbClust(roi_datafz1[,2:8], distance = "euclidean", min.nc = 2,max.nc = 6, method = "ward.D2", index="alllong")
+#fviz_nbclust(nb1)
+#nb1$All.index[3,3]#Hartigan for 4 clusters
+#nb1$All.index[3,13]#Silhouette for 2 clusters
+```
+
+3b. Fit a multivariate normal distribution to the same data used to perform hierarchical clustering
+```{r}
+library(MASS)
+sigma <- cov(test_data)
+mu <- colMeans(test_data)
+real_CI <- cluster_test(test_data)#Hartigan and Silhouette max values for the real clusters
+```
+
+3c. Repeatedly perform hierarchical clustering on samples from this distribution, thus creating an empirical null distribution of clustering indeces
+```{r}
+# get a null distribution of clusters
+null_Cluster <- list()
+n_sims <- 1999 #number of simulations
+for (i in 1:n_sims){
+  rand_sample <- mvrnorm(n=nrow(test_data), mu=mu, Sigma=sigma)#multivariate normally distributed data
+  null_Cluster[[i]] <- cluster_test(rand_sample)
+}
+null_Cluster <- as.data.frame(do.call(rbind, null_Cluster))#transform results to data frame
+```
+
+3d. print p-values
+
+```{r}
+#Hartigan
+rank_cv1 <- sum(real_CI[1] < null_Cluster[,1]) + 1 #in the begining it is 6, after changing to 1999 sim it will be 2000 total
+pval_cv1 <- rank_cv1 / (n_sims+1)
+#Silhouette
+rank_cv2 <- sum(real_CI[2] < null_Cluster[,2]) + 1
+pval_cv2 <- rank_cv2 / (n_sims+1)
+
+t(t((c("p.val variance ratio"=pval_cv1, "p.val Silhouette"=pval_cv2))))#transpose the p-values
+```
+
+3e. visualize null distribution
+
+```{r}
+par(mfrow=c(1,2))
+hist(null_Cluster[,1], breaks = 30, main = "variance ratio criterion null")
+abline(v=real_CI[1], col="red")
+text(real_CI[1] + 10, 70, paste('p = ', round(pval_cv1, 2)))
+hist(null_Cluster[,2], breaks = 30, main = "Silhouette null")
+abline(v=real_CI[2], col="red")
+text(real_CI[2] - 0.025, 80, paste('p = ', round(pval_cv2, 2)))
+```
+
+
