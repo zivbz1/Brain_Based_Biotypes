@@ -163,7 +163,7 @@ real_CI <- cluster_test(test_data) #Hartigan and Silhouette max values for the r
 ```{r}
 # get a null distribution of clusters
 null_Cluster <- list()
-n_sims <- 1999 #number of simulations
+n_sims <- 19999 #number of simulations (19,999)
 for (i in 1:n_sims){
   rand_sample <- mvrnorm(n=nrow(test_data), mu=mu, Sigma=sigma) #multivariate normally distributed data
   null_Cluster[[i]] <- cluster_test(rand_sample)
@@ -195,3 +195,5 @@ hist(null_Cluster[,2], breaks = 30, main = "Silhouette null")
 abline(v=real_CI[2], col="red")
 text(real_CI[2] - 0.025, 80, paste('p = ', round(pval_cv2, 2)))
 ```
+
+
