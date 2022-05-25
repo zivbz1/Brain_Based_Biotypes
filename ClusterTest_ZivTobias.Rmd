@@ -14,18 +14,16 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r Load Libraries , include=FALSE}
 library(readxl)
-# library(PerformanceAnalytics)
-# library(Hmisc)
-# library(corrplot)
-# library(factoextra)
-# library(cluster)
-# library(factoextra)
+library(PerformanceAnalytics)
+library(corrplot)
 library(NbClust)
 library(MASS)
-# library(dendextend)
-# library(ggplot2)
+library(Hmisc)
+library(cluster)
+library(factoextra)
+#library(dendextend)
+#library(ggplot2)
 # library(writexl)
-
 # library(ggpubr)
 # library(reshape2)
 # library(plyr)
@@ -197,5 +195,3 @@ hist(null_Cluster[,2], breaks = 30, main = "Silhouette null")
 abline(v=real_CI[2], col="red")
 text(real_CI[2] - 0.025, 80, paste('p = ', round(pval_cv2, 2)))
 ```
-
-
